@@ -12,14 +12,14 @@ library(rmdformats)
 
 # Introduction
 
-In this report, we study the effects of government polices on COVID-19 pandemic control. We use everyday new COVID-19 cases in year 2021 as response variable, key explanatory variables are one country indicator variable, and four policy variables (mask policy, stay-at-home policy, vaccine policy, international travel policy). We build factorial ANOVA model based on normality assumption, and conduct hypothesis tests, as well as construct confidence intervals. Conclusions of our analysis can serve as a reference for the general public.
+In this report, we study the effects of government polices on COVID-19 pandemic control. We use everyday new COVID-19 cases in year 2021 as response variable and apply 20 days lag as well as log transformation. Key explanatory variables are one country indicator variable, and four policy variables (mask policy, stay-at-home policy, vaccine policy, international travel policy). We build factorial ANOVA model with normality assumption, and conduct hypothesis tests, as well as construct confidence intervals. Conclusions of our analysis can serve as a reference for the general public.
 
 
 # Background and Dataset Description
 
 ## Background
 
-To tackle the unprecedented COVID-19 pandemic, governments have imposed many polices. Some common polices are on facial covering, quarantine, vaccination, gathering, traveling. However, as the pandemic has lasted for more than two years. People are getting tired of all these policies, and begin to question about the necessity. Under this circumstance, we try to figure out whether these policies make a significant difference on pandemic control? We hope our analysis can serve as a reference for general public, and help them regain confidence in the policies.
+To tackle the unprecedented COVID-19 pandemic, governments have imposed many polices. Some common polices are on facial covering, quarantine, vaccination, gathering, traveling. However, as the pandemic has lasted for more than two years. People are getting tired of all these policies, and begin to question about the necessity. Under this circumstance, we try to figure out whether these policies make a significant difference on pandemic control. We hope our analysis can serve as a reference for general public, and help them regain confidence in the policies.
 
 ## Dataset Description
 
@@ -67,7 +67,12 @@ The five candidate explanatory variables are (variable descriptions are based on
 
 * 3 - require not leaving house with minimal exceptions (e.g. allowed to leave once a week, or only one person can leave at a time, etc)
 
-*inter_travel* ($\zeta$): Record restrictions on international travel (for foreign travelers, not citizens). Five levels: 0 - no restrictions, 1 - screening arrivals, 2 - quarantine arrivals from some or all regions, 3 - ban arrivals from some regions, 4 - ban on all regions or total border closure.
+*inter_travel* ($\zeta$): Record restrictions on international travel (for foreign travelers, not citizens). Five levels: 
+* 0 - no restrictions
+* 1 - screening arrivals 
+* 2 - quarantine arrivals from some or all regions 
+* 3 - ban arrivals from some regions 
+* 4 - ban on all regions or total border closure.
 
 # Descriptive Data Analysis
 
@@ -88,7 +93,7 @@ library(echarts4r)
 
 Data preprocess is needed first. Policy data set is constructed in a wide format, we convert it into a long format. Besides, the two data set uses different coding system for country. To avoid missing countries when joining data sets, we convert country codes into a consistent format. For our analysis, we restrict the time range in year 2021. We then join two data sets, on key `Date_reported` and `Country_code`, and drop NA values. 
 
-Some important statistics for key variables we are interested are:
+Some important statistics for key variables are:
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 covid <- read.csv("WHO-COVID-19-global-data.csv")
@@ -241,13 +246,13 @@ facial |>
   e_visual_map(facial_policy)
 ```
 
-After an worldwide overview, our analysis after will be limited in five major European countries: Germany, United Kingdom, France, Italy and Spain. This decision is based on following reasons: 
+After an worldwide overview, our analysis then will be limited in five major European countries: Germany, United Kingdom, France, Italy and Spain. This decision is based on the following reasons: 
 
-* 1. Doing analysis on all countries in the world can introduce much variance in our model. Besides, when sample size is large, we tend to always reject the null hypothesis with very small p-values, which is against our purpose to find out whether policies help control covid new cases or not.
+* 1. Doing analysis on all countries in the world can introduce much variance in our model. Besides, when sample size is large, we tend to always reject the null hypothesis with very small p-values, which is against our purpose to find out whether policies help control COVID new cases or not.
 
-* 2. The five countries are all developed countries and have similar culture background, and this can reduce the effect brought by countries, which let us focus on the effects brought policies. 
+* 2. The five countries are all developed countries and have similar culture background, and this can reduce the effect brought by countries, which let us focus more on the effects brought policies. 
 
-* 3. Most people are able to travel freely (no need of a visa) from one country to another, which makes the effect of `internationaltravel` easier to observe. 
+* 3. Most people in the five countries are able to travel freely (no need of a visa) from one country to another, which makes the effect of `internationaltravel` easier to observe. 
 
 In order to have a general idea on trend of new cases and policies, we make time series plots here. Since we only want to have an overview of policies, instead of focusing on one particular policy, a [government response index](https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/index_methodology.md) calculated by OxCGRT is applied, where all of the indices are simple averages of the individual component indicators. 
 
@@ -383,9 +388,9 @@ ggplot(reduced_plotdata,                            # Draw ggplot2 time series p
 
 There are two important steps before our ANOVA analysis.
 
-* 1. We take a 20-day lag, that is, we analyze the effect of today's policies on new cases 20 days later. The argument is that the policies we consider all take time to have effect. It is impossible that new cases tomorrow will immediately decrease because the government published a facial coverings requirement. People can already be exposed to virus before the policies come out. Many studies in the world show that it can take on average 7 days from exposure to main symptoms. And most people are no longer contagious after 14 days. Based on the above facts, we take a 20 day lag on new cases data to take out cases that are exposed to virus before the policy. A 20 day lag also allows policies to be properly carried out, and take effect. We call the new response variable `New_casesL20`
+* 1. We take a 20-day lag, that is, we analyze the **effect of today's policies on new cases 20 days later**. The argument is that the policies we consider all take time to have effect. It is impossible that new cases tomorrow will immediately decrease because the government imposes a facial coverings requirement today. People can already be exposed to virus before the policies come out. Many studies in the world show that it can take on average 7 days from exposure to main symptoms. And most people are no longer contagious after 14 days. Based on the above facts, we take a 20 days lag on new cases data to take out cases that are exposed to virus before the policy. A 20 days lag also allows policies to be properly carried out, and take effect. We call the new response variable `New_casesL20`
 
-* 2. The variable `New_casesL20` has a extremely right-skewed distribution (as shown below), suggesting possible transformation is needed, otherwise our assumption when building the model will be seriously violated. Here we apply Box-Cox procedure, and procedure strongly suggests a log-transformation ($\lambda = 0$). Thus, our response variable for analysis becomes `log(New_casesL20)`. It also needs to be mention that when doing actual transformation, we do not directly apply log function of `New_casesL20`. Instead, we take the `log(New_casesL20+1)`. This is because log function can not take non-positive value, and some cell can have 0 new cases. We consider adding 1 as appropriate since after transformation, we still have $log(0+1)=0$.
+* 2. The variable `New_casesL20` has a extremely right-skewed distribution (as shown below), suggesting possible transformation is needed, otherwise our assumption when building the model will be severely violated. Here we apply Box-Cox procedure, and procedure strongly suggests a log-transformation ($\lambda = 0$). Thus, our response variable for analysis becomes `log(New_casesL20)`. It also needs to be mention that when doing actual transformation, we do not directly apply log function of `New_casesL20`. Instead, we take the `log(New_casesL20+1)`. This is because log function can not take non-positive value, and some cell can have 0 new cases. We consider adding 1 as appropriate since after transformation, we still have $log(0+1)=0$.
 
 ```{r}
 par(mfrow=c(1,2))
@@ -393,7 +398,7 @@ plot(density(mergedata$New_casesL20))
 boxcox(lm((New_casesL20+1) ~ Country_code + facial_policy + vac_policy + stay_home + inter_travel, mergedata))
 ```
 
-Before building an ANOVA model, we first make main effect plots for four policy variables (variable country is not our focus here). From the graph, it seems that in each policy variable, there are some groups having significant difference in `log(new_casesL20`. 
+Before building an ANOVA model, we first make main effect plots for four policy variables (country variable is not our focus here). From the graph, it seems that in each policy variable, there are some groups having significant difference in `log(new_casesL20)`. 
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 par(mfrow=c(2,2))
@@ -457,8 +462,8 @@ $$
 n = 1,\dots,19296,\, i = 1,\dots,53,\, j = 0,\dots,4,\, k = 0,\dots,5, \, l = 0, \dots, 3
 $$
 
-Here we do not consider the interaction term between `stay_home` and `vac_policy`, as this one has no useful meaning. The ANOVA table below shows the hypothesis test result for each interaction term. Take `facial_policy*stay_home` as an example, we have $(\beta\delta)_{jl}=0$ v.s.
-$H_1: {\rm not \ all\ } (\beta\delta)_{jl}\ {\rm are\ zero}$. Again, with full model and reduced model, we can construct F-statistics. Since $p=0.175$, we can not reject null hypothesis under significant level $\alpha=0.05$. For the rest interaction terms, we all reject the null hypothesis, and consider them significant.
+Here we do not consider the interaction term between `stay_home` and `vac_policy`, as this one has no useful meaning. The ANOVA table below shows the hypothesis test result for each interaction term. Take `facial_policy*stay_home` as an example, we have $H_0: (\beta\delta)_{jl}=0$ v.s.
+$H_1: {\rm not \ all\ } (\beta\delta)_{jl}\ {\rm are\ zero}$. Again, with full model and reduced model, we can construct F-statistics. Since $p=0.175$, we can not reject null hypothesis under significant level $\alpha=0.05$. For the rest interaction terms, we all reject the null hypothesis, and consider them significant in our model.
 
 ```{r}
 # interaction terms
@@ -482,7 +487,7 @@ Now we already have temporary conclusions that some policies do have effect on c
 
 ## Confidence Intervals
 
-We construct 95% confidence interval using Tukey-Kramer method. Here, we only display that for `facial_policy` and `stay_home`. As others have too many levels, making the plots meaningless. 
+We construct 95% confidence intervals using Tukey-Kramer method. Here, we only display that for `facial_policy` and `stay_home`. As others have too many levels, making the plots hard to recognize. 
 
 We can see for `facial_policy`, 95% confidence interval of "4-3" is negative and does not contain 0. This means that compared to level 3 (masks required in public/shared spaces), level 4 (masks required everywhere outside home) is associated with significantly lower new cases. And for `stay_home`, with all negative confidence intervals, both the level 1 (recommended not leaving home) and 2 (not leaving home with exceptions of daily exercises) have effect of reducing new cases. Also, level 2 seems to be more powerful in controlling new cases.
 
@@ -497,7 +502,7 @@ par(mfrow=c(1,1))
 # Sensitivity Analysis
 
 
-We also need to conduct model diagnostics to check model assumption. The major assumption we make is that $\epsilon_{ijklmn}$ are i.i.d $N(0,\sigma^2)$. This contains two sub assumptions: 1. error term has equal variance; 2. the error term follows normal distribution. 
+We also need to conduct model diagnostics to check model assumptions. The major assumption we make is that $\epsilon_{ijklmn}$ are i.i.d $N(0,\sigma^2)$. This contains two sub assumptions: 1. error term has equal variance; 2. the error term follows normal distribution. 
 
 To check equal variance assumption, we inspect Residuals v.s. Fitted plot and Normal-QQ plot. From the first plot, we observe no obvious heteroskedasticity. Also, there is no obvious non-linear trend. 
 
@@ -505,13 +510,13 @@ To check equal variance assumption, we inspect Residuals v.s. Fitted plot and No
 plot(anova.fit, which = 1)
 ```
 
-To inspect normality assumption, we inspect out Normal Q-Q plot. We can see the standardized residuals fit with theoretical quantiles pretty well. There is no violation of normality assumption. This is mainly because we first conduct log transformation on response variable `New_cases`, which greatly improve the situation of right-skewed distribution. 
+To inspect normality assumption, we inspect out Normal Q-Q plot. We can see the standardized residuals overlap with theoretical quantiles pretty well. There is no violation of normality assumption. This is mainly because we first conduct log transformation on response variable `New_cases`, which greatly relieve the situation of right-skewed distribution. 
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 plot(anova.fit, which = 2)
 ```
 
-As the model assumptions are not violated, our procedures of conducting hypothesis tests and building confidence intervals seem to be valid here. We can come up with some helpful conclusions.
+As the model assumptions are not violated, our procedures of conducting hypothesis tests and building confidence intervals seem to be valid here. We can come up with some conclusions.
 
 # Conclusions and Further Discussions
 
@@ -519,7 +524,7 @@ As the model assumptions are not violated, our procedures of conducting hypothes
 
 Based on our analysis, we first conclude that some policies do have effects on controlling pandemic. Detailed conclusions are listed below:
 
-* In particular, facial policy, vaccine policy, and stay-at-home policy all help reduce COVID new cases. However, the effects are different with regard to the countries.
+* In particular, facial policy, vaccine policy, and stay-at-home policy all have statistically significant impact on helping reduce COVID new cases. However, the effects are different with regard to countries.
 
 * For facial policy, the strictest level (masks required everywhere outside home) is significantly more powerful than other levels in reducing new cases.
 
@@ -529,11 +534,11 @@ Back at our questions in the beginning, as people are getting tired, are these p
 
 ## Further Discussions
 
-There are still drawbacks in our analysis. First is that although by introducing interaction terms, we are able to explain more sample variances, there are still large parts that are not explained. As COVID new cases can actually be affected by many factors, like social economic factors, environmental factors, nature of virus. It is impossible for us to exhaust all of them in this analysis. Also, though we are able to draw solid conclusions based confidence intervals for facial policy and stay-at-home policy, we can not reach a similar one for vaccine policy. We only know that it does have effect on COVID new cases. Moreover, it is always debatable on how policies and new cases interact with each other. Is it because pandemic becomes severe that government publishes stricter policies, or stricter policies help control the pandemic? In our analysis, we tackle this problem by taking lag on response variable, but some counterintuitive facts still show up, and need further study.
+There are still drawbacks in our analysis. First is that although by introducing interaction terms, we are able to explain more sample variances, there are still large parts that are not explained. As COVID new cases can actually be affected by many factors, like social economic factors, environmental factors, nature of virus. It is impossible for us to exhaust all of them in this analysis. Also, though we are able to draw solid conclusions based on confidence intervals for facial policy and stay-at-home policy, we can not reach a similar one for vaccine policy. We only know that it does have effect on COVID new cases. Moreover, it is still debatable on how policies and new cases interact with each other. Is it because pandemic becomes severe that government publishes stricter policies, or stricter policies help control the pandemic? In our analysis, we tackle this problem by taking lag on response variable, but some counter-intuitive facts still show up, and need further study.
 
 # Acknowledge
 
-We want to thank Dr. Chen for introducing ANOVA model to us, as well as providing the WHO data set. We also want to thank our project adviser Zitong for providing helpful advice. Besides, I want to thank my teammates Xiaoyi, Tianyi and Kay for discussing projects together.
+We want to thank Dr. Chen for introducing ANOVA model to us. We also want to thank our project adviser Zitong for providing helpful advice. Besides, I want to thank my teammates Xiaoyi, Tianyi and Kay for discussing projects together.
 
 # Appendix: R Code
 
