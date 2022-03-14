@@ -1,0 +1,543 @@
+---
+title: "Policy Effects on COVID-19 Pandemic Control"
+author: "Jibo Shen"
+date: "3/14/2022"
+output: rmdformats::material
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.pos = 'H', fig.width=12, fig.height=8)
+library(rmdformats)
+```
+
+# Introduction
+
+In this report, we study the effects of government polices on COVID-19 pandemic control. We use everyday new COVID-19 cases in year 2021 as response variable, key explanatory variables are one country indicator variable, and four policy variables (mask policy, stay-at-home policy, vaccine policy, international travel policy). We build factorial ANOVA model based on normality assumption, and conduct hypothesis tests, as well as construct confidence intervals. Conclusions of our analysis can serve as a reference for the general public.
+
+
+# Background and Dataset Description
+
+## Background
+
+To tackle the unprecedented COVID-19 pandemic, governments have imposed many polices. Some common polices are on facial covering, quarantine, vaccination, gathering, traveling. However, as the pandemic has lasted for more than two years. People are getting tired of all these policies, and begin to question about the necessity. Under this circumstance, we try to figure out whether these policies make a significant difference on pandemic control? We hope our analysis can serve as a reference for general public, and help them regain confidence in the policies.
+
+## Dataset Description
+
+Our main data set is the [WHO COVID-19 Global Data](https://covid19.who.int). It is provided and updated everyday by World Health Organization (WHO). It records daily COVID-19 cases and death (both new and cumulative) on country level (236 countries in the world). 
+
+We also need data set on government policies. [The Oxford Covid-19 Government Response Tracker (OxCGRT)](https://www.bsg.ox.ac.uk/research/research-projects/covid-19-government-response-tracker) team tracks policy measures country governments have taken to tackle COVID-19. The data set starts from 01/01/2020 and is daily updated. It covers almost all common measures governments can take: `school_closing`, `workplace_closing`, `cancel_public_events`, `restrictions on gatherings`, `close_public_transport`, `stay_at_home requirements`, `movementrestrictions`, `internationaltravel`, `testing_policy`, `contact_tracing`, `facial_coverings`, `vaccination_policy`. `protection_of_elderly_people`. Basically, OxCGRT team uses indices (usually from 0 to 4) to indicate how far the government goes on that policy. Here, we will not take all policies into account, but focus on those closely related to our daily life. Besides, some policies are overlapped with others, and it is better not using them simultaneously to avoid multicollinearity.
+
+The five candidate explanatory variables are (variable descriptions are based on [OxCGRT website](https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/codebook.md)):
+
+*Country* ($\alpha$): 53 countries
+
+*facial_policy* ($\beta$): Record policies on the use of facial coverings. Five levels:
+
+* 0 - No policy
+
+* 1 - Recommended
+
+* 2- Required in some specified shared/public spaces outside the home with other people present, or some situations when social distancing not possible
+
+* 3- Required in all shared/public spaces outside the home with other people present or all situations when social distancing not possible
+
+* 4 - Required outside the home at all times regardless of location or presence of other people
+
+*vac_policy* ($\gamma$): Record policies for vaccine delivery for different groups. Six levels:
+
+* 0 - No availability
+
+* 1 - Availability for ONE of following: key workers/ clinically vulnerable groups (non elderly) / elderly groups
+
+* 2 - Availability for TWO of following: key workers/ clinically vulnerable groups (non elderly) / elderly groups
+
+* 3 - Availability for ALL of following: key workers/ clinically vulnerable groups (non elderly) / elderly groups
+
+* 4 - Availability for all three plus partial additional availability (select broad groups/ages)
+
+* 5 - Universal availability
+
+*stay_home* ($\delta$): Record orders to "shelter-in-place" and otherwise confine to the home. Four levels:
+
+* 0 - no measures
+
+* 1 - recommend not leaving house
+
+* 2 - require not leaving house with exceptions for daily exercise, grocery shopping, and 'essential' trips
+
+* 3 - require not leaving house with minimal exceptions (e.g. allowed to leave once a week, or only one person can leave at a time, etc)
+
+*inter_travel* ($\zeta$): Record restrictions on international travel (for foreign travelers, not citizens). Five levels: 0 - no restrictions, 1 - screening arrivals, 2 - quarantine arrivals from some or all regions, 3 - ban arrivals from some regions, 4 - ban on all regions or total border closure.
+
+# Descriptive Data Analysis
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(gridExtra)
+library(scales)
+library(lubridate)
+library(ggplot2)
+library(countrycode)
+library(MASS)
+library(useful)
+library(Hmisc)
+library(gplots)
+library(echarts4r)
+```
+
+
+Data preprocess is needed first. Policy data set is constructed in a wide format, we convert it into a long format. Besides, the two data set uses different coding system for country. To avoid missing countries when joining data sets, we convert country codes into a consistent format. For our analysis, we restrict the time range in year 2021. We then join two data sets, on key `Date_reported` and `Country_code`, and drop NA values. 
+
+Some important statistics for key variables we are interested are:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+covid <- read.csv("WHO-COVID-19-global-data.csv")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+covid <- covid %>% 
+  filter(WHO_region != "Other") %>% 
+  mutate(WHO_region = fct_recode(WHO_region,"Eastern Mediterranean"="EMRO",
+                                 "Europe" = "EURO","Africa" = "AFRO",
+                                 "Western Pacific" ="WPRO",
+                                 "Americas"="AMRO",
+                                 "South-East Asia" = "SEARO"))
+colnames(covid)[1] <- "Date_reported"
+covid$Date_reported <- as.Date(covid$Date_reported, format = "%Y-%m-%d")
+
+```
+
+```{r}
+covid$New_casesL20 <- Lag(covid$New_cases, -20)
+#covid <- shift.column(data = covid, columns = "New_casesL7",len = 7L, up = FALSE)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+covid <- covid %>% filter(Date_reported >= "2021-01-01" & Date_reported <= "2021-12-31" & WHO_region == "Europe")
+covid$Country_code <- countrycode(covid$Country_code, "iso2c", "iso3c")
+covid$Country_code <- as.factor(covid$Country_code)
+covid <- na.omit(covid)
+#covid <- filter(covid, Country_code == "FRA" | Country_code == "ITA" | Country_code == "DEU" | Country_code == "GBR" | Country_code == "ESP" )
+#Country_code == "RUS" | | Country_code == "UKR"| Country_code == "POL" | Country_code == "ROU" | Country_code == "NLD"
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+facial <- read.csv("h6_facial_coverings.csv")
+facial <- gather(data = facial, key = Date_reported, value = facial_policy, 4:782, factor_key=FALSE)
+# Conversion into date format 
+facial$Date_reported<-as.Date(facial$Date_reported, "X%d%b%Y") 
+facial <- facial[c("country_code", "Date_reported", "facial_policy")]
+colnames(facial)[1] <- "Country_code"
+
+mergedata <- merge(covid, facial, by = c("Country_code", "Date_reported"), all = FALSE)
+mergedata <- na.omit(mergedata)
+
+mergedata$Country_code <- as.factor(mergedata$Country_code)
+mergedata$facial_policy <- as.factor(mergedata$facial_policy)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+vac <- read.csv("h7_vaccination_policy.csv")
+vac <- gather(data = vac, key = Date_reported, value = vac_policy, 4:782, factor_key=FALSE)
+# Conversion into date format 
+vac$Date_reported<-as.Date(facial$Date_reported, "X%d%b%Y") 
+vac <- vac[c("country_code", "Date_reported", "vac_policy")]
+colnames(vac)[1] <- "Country_code"
+
+mergedata <- merge(mergedata, vac, by = c("Country_code", "Date_reported"), all = FALSE)
+mergedata <- na.omit(mergedata)
+mergedata$vac_policy <- as.factor(mergedata$vac_policy)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+stay_home <- read.csv("c6_stay_at_home_requirements.csv")
+stay_home <- gather(data = stay_home, key = Date_reported, value = stay_home, 4:782, factor_key=FALSE)
+# Conversion into date format 
+stay_home$Date_reported<-as.Date(stay_home$Date_reported, "X%d%b%Y") 
+stay_home <- stay_home[c("country_code", "Date_reported", "stay_home")]
+colnames(stay_home)[1] <- "Country_code"
+
+mergedata <- merge(mergedata, stay_home, by = c("Country_code", "Date_reported"), all = FALSE)
+mergedata <- na.omit(mergedata)
+mergedata$stay_home <- as.factor(mergedata$stay_home)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+inter_travel <- read.csv("c8_internationaltravel.csv")
+inter_travel <- gather(data = inter_travel, key = Date_reported, value = inter_travel, 4:782, factor_key=FALSE)
+# Conversion into date format 
+inter_travel$Date_reported <- as.Date(inter_travel$Date_reported, "X%d%b%Y") 
+inter_travel <- inter_travel[c("country_code", "Date_reported", "inter_travel")]
+colnames(inter_travel)[1] <- "Country_code"
+
+mergedata <- merge(mergedata, inter_travel, by = c("Country_code", "Date_reported"), all = FALSE)
+mergedata <- na.omit(mergedata)
+mergedata$inter_travel <- as.factor(mergedata$inter_travel)
+```
+
+```{r}
+summary(mergedata[,c(5,10,11,12,13)])
+```
+
+For exploratory data analysis, we first take an overall view of WHO COVID-19 Data, and the most straightforward way of displaying this is through a world map. The following is an interactive plot for world COVID-19 daily new cases in 2021. By dragging the timeline beneath it, we see how number of new cases change for each country through the whole year. If we play with this plot, we can observe that for most of days, the United States was the country with most new cases. Brazil also had higher numbers of new cases compared with others. India had a surge of new cases in April. At the end of the year, some European countries encountered a dramatic surge, probably because of new Omicron variant. 
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+covid <- read.csv("WHO-COVID-19-global-data.csv")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+covid <- covid %>% filter(WHO_region != "Other") %>% mutate(WHO_region = fct_recode(WHO_region,"Eastern Mediterranean"="EMRO",
+                                 "Europe" = "EURO","Africa" = "AFRO",
+                                 "Western Pacific" ="WPRO",
+                                 "Americas"="AMRO",
+                                 "South-East Asia" = "SEARO"))
+colnames(covid)[1] <- "Date_reported"
+covid$Date_reported <- as.Date(covid$Date_reported, format = "%Y-%m-%d")
+covid <- covid %>% filter(Date_reported >= "2021-01-01" & Date_reported <= "2021-12-31")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+covid[covid$Country == "Russian Federation",]$Country <- "Russia"
+covid[covid$Country == "United States of America",]$Country <- "United States"
+covid[covid$Country == "Iran (Islamic Republic of)",]$Country <- "Iran"
+covid[covid$Country == "Venezuela (Bolivarian Republic of)",]$Country <- "Venezuela"
+covid[covid$Country == "Bolivia (Plurinational State of)",]$Country <- "Bolivia"
+covid[covid$Country == "Democratic Republic of the Congo",]$Country <- "Dem. Rep. Congo"
+covid[covid$Country == "United Republic of Tanzania",]$Country <- "Tanzania"
+covid[covid$Country == "Central African Republic",]$Country <- "Central African Rep."
+covid[covid$Country == "South Sudan",]$Country <- "S. Sudan"
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# new cases interactive plot for year 2021
+covid |>
+  group_by(Date_reported) |> 
+  e_charts(Country, timeline = TRUE) |> 
+  e_map(New_cases) |> 
+  e_visual_map(New_cases)
+```
+
+We then take a look at policy data. Here we take `facial_coverings` (The variable has five levels from 0 to 4) as an example. Similar to the above, we also create an interactive plot. Other than the time line dragging function, by moving mouse on the left bar, we are able to highlight all countries at the same level on the day. Some patterns are:  For most time of the year 2021, countries in North and South America, Africa, South Asia are on level 3 or 4 (required in all public places or required all the time outside home). European countries and East Asian countries required facial coverings in some specified public spaces. Only very few countries (fewer than 10) had no requirements at all.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+facial <- read.csv("h6_facial_coverings.csv")
+facial <- gather(data = facial, key = Date_reported, value = facial_policy, 4:782, factor_key=FALSE)
+# Conversion into date format 
+facial$Date_reported<-as.Date(facial$Date_reported, "X%d%b%Y") 
+facial <- filter(facial, Date_reported >= "2021-01-01" & Date_reported <= "2021-12-31")
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# new cases interactive plot for year 2021
+facial |>
+  group_by(Date_reported) |> 
+  e_charts(country_name, timeline = TRUE) |> 
+  e_map(facial_policy) |> 
+  e_visual_map(facial_policy)
+```
+
+After an worldwide overview, our analysis after will be limited in five major European countries: Germany, United Kingdom, France, Italy and Spain. This decision is based on following reasons: 
+
+* 1. Doing analysis on all countries in the world can introduce much variance in our model. Besides, when sample size is large, we tend to always reject the null hypothesis with very small p-values, which is against our purpose to find out whether policies help control covid new cases or not.
+
+* 2. The five countries are all developed countries and have similar culture background, and this can reduce the effect brought by countries, which let us focus on the effects brought policies. 
+
+* 3. Most people are able to travel freely (no need of a visa) from one country to another, which makes the effect of `internationaltravel` easier to observe. 
+
+In order to have a general idea on trend of new cases and policies, we make time series plots here. Since we only want to have an overview of policies, instead of focusing on one particular policy, a [government response index](https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/index_methodology.md) calculated by OxCGRT is applied, where all of the indices are simple averages of the individual component indicators. 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+covid <- read.csv("WHO-COVID-19-global-data.csv")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+covid <- covid %>% 
+  filter(WHO_region != "Other") %>% 
+  mutate(WHO_region = fct_recode(WHO_region,"Eastern Mediterranean"="EMRO",
+                                 "Europe" = "EURO","Africa" = "AFRO",
+                                 "Western Pacific" ="WPRO",
+                                 "Americas"="AMRO",
+                                 "South-East Asia" = "SEARO"))
+colnames(covid)[1] <- "Date_reported"
+covid$Date_reported <- as.Date(covid$Date_reported, format = "%Y-%m-%d")
+
+```
+
+```{r}
+covid$New_casesL20 <- Lag(covid$New_cases, -20)
+#covid <- shift.column(data = covid, columns = "New_casesL7",len = 7L, up = FALSE)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+covid <- covid %>% filter(Date_reported >= "2021-01-01" & Date_reported <= "2021-12-31" & WHO_region == "Europe")
+covid$Country_code <- countrycode(covid$Country_code, "iso2c", "iso3c")
+covid$Country_code <- as.factor(covid$Country_code)
+covid <- na.omit(covid)
+covid <- filter(covid, Country_code == "FRA" | Country_code == "ITA" | Country_code == "DEU" | Country_code == "GBR" | Country_code == "ESP" )
+#Country_code == "RUS" | | Country_code == "UKR"| Country_code == "POL" | Country_code == "ROU" | Country_code == "NLD"
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+facial <- read.csv("h6_facial_coverings.csv")
+facial <- gather(data = facial, key = Date_reported, value = facial_policy, 4:782, factor_key=FALSE)
+# Conversion into date format 
+facial$Date_reported<-as.Date(facial$Date_reported, "X%d%b%Y") 
+facial <- facial[c("country_code", "Date_reported", "facial_policy")]
+colnames(facial)[1] <- "Country_code"
+
+mergedata <- merge(covid, facial, by = c("Country_code", "Date_reported"), all = FALSE)
+mergedata <- na.omit(mergedata)
+
+mergedata$Country_code <- as.factor(mergedata$Country_code)
+mergedata$facial_policy <- as.factor(mergedata$facial_policy)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+vac <- read.csv("h7_vaccination_policy.csv")
+vac <- gather(data = vac, key = Date_reported, value = vac_policy, 4:782, factor_key=FALSE)
+# Conversion into date format 
+vac$Date_reported<-as.Date(facial$Date_reported, "X%d%b%Y") 
+vac <- vac[c("country_code", "Date_reported", "vac_policy")]
+colnames(vac)[1] <- "Country_code"
+
+mergedata <- merge(mergedata, vac, by = c("Country_code", "Date_reported"), all = FALSE)
+mergedata <- na.omit(mergedata)
+mergedata$vac_policy <- as.factor(mergedata$vac_policy)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+stay_home <- read.csv("c6_stay_at_home_requirements.csv")
+stay_home <- gather(data = stay_home, key = Date_reported, value = stay_home, 4:782, factor_key=FALSE)
+# Conversion into date format 
+stay_home$Date_reported<-as.Date(stay_home$Date_reported, "X%d%b%Y") 
+stay_home <- stay_home[c("country_code", "Date_reported", "stay_home")]
+colnames(stay_home)[1] <- "Country_code"
+
+mergedata <- merge(mergedata, stay_home, by = c("Country_code", "Date_reported"), all = FALSE)
+mergedata <- na.omit(mergedata)
+mergedata$stay_home <- as.factor(mergedata$stay_home)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+inter_travel <- read.csv("c8_internationaltravel.csv")
+inter_travel <- gather(data = inter_travel, key = Date_reported, value = inter_travel, 4:782, factor_key=FALSE)
+# Conversion into date format 
+inter_travel$Date_reported <- as.Date(inter_travel$Date_reported, "X%d%b%Y") 
+inter_travel <- inter_travel[c("country_code", "Date_reported", "inter_travel")]
+colnames(inter_travel)[1] <- "Country_code"
+
+mergedata <- merge(mergedata, inter_travel, by = c("Country_code", "Date_reported"), all = FALSE)
+mergedata <- na.omit(mergedata)
+mergedata$inter_travel <- as.factor(mergedata$inter_travel)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+gov_response <- read.csv("government_response_index.csv")
+gov_response <- gather(data = gov_response, key = Date_reported, value = gov_response, 4:782, factor_key=FALSE)
+# Conversion into date format 
+gov_response$Date_reported<-as.Date(gov_response$Date_reported, "X%d%b%Y") 
+gov_response<- gov_response[c("country_code", "Date_reported", "gov_response")]
+colnames(gov_response)[1] <- "Country_code"
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+plotdata <- merge(covid, gov_response, by = c("Country_code", "Date_reported"), all = FALSE)
+plotdata <- na.omit(plotdata)
+
+reduced_plotdata <- filter(plotdata, Country_code == "FRA" | Country_code == "ITA" | Country_code == "DEU" | Country_code == "GBR" | Country_code == "ESP")  
+```
+
+From the time series plot, some relationships between new cases and policies can already be observed. Between June and July, number of new cases in five countries all reached a very low level. Then after July, most countries' government response index started to decrease. In accordance to this decrease, number of new cases started to increase from the lowest gradually. At the end of the year, Omicron Variant brought a surge of new cases in all five countries, as well as a sudden increase in government responses. 
+
+Though not a rigorous analysis, the plots give some clues about how new cases variable interacts with policy variables. And we move on to build ANOVA model.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(reduced_plotdata,                            # Draw ggplot2 time series plot
+       aes(x = Date_reported,
+           y = New_cases,
+           col = Country_code)) +
+  geom_line()
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(reduced_plotdata,                            # Draw ggplot2 time series plot
+       aes(x = Date_reported,
+           y = gov_response,
+           col = Country_code)) +
+  geom_line()
+```
+
+# Inferential Analysis
+
+## Preprocess of Response Variable
+
+There are two important steps before our ANOVA analysis.
+
+* 1. We take a 20-day lag, that is, we analyze the effect of today's policies on new cases 20 days later. The argument is that the policies we consider all take time to have effect. It is impossible that new cases tomorrow will immediately decrease because the government published a facial coverings requirement. People can already be exposed to virus before the policies come out. Many studies in the world show that it can take on average 7 days from exposure to main symptoms. And most people are no longer contagious after 14 days. Based on the above facts, we take a 20 day lag on new cases data to take out cases that are exposed to virus before the policy. A 20 day lag also allows policies to be properly carried out, and take effect. We call the new response variable `New_casesL20`
+
+* 2. The variable `New_casesL20` has a extremely right-skewed distribution (as shown below), suggesting possible transformation is needed, otherwise our assumption when building the model will be seriously violated. Here we apply Box-Cox procedure, and procedure strongly suggests a log-transformation ($\lambda = 0$). Thus, our response variable for analysis becomes `log(New_casesL20)`. It also needs to be mention that when doing actual transformation, we do not directly apply log function of `New_casesL20`. Instead, we take the `log(New_casesL20+1)`. This is because log function can not take non-positive value, and some cell can have 0 new cases. We consider adding 1 as appropriate since after transformation, we still have $log(0+1)=0$.
+
+```{r}
+par(mfrow=c(1,2))
+plot(density(mergedata$New_casesL20))
+boxcox(lm((New_casesL20+1) ~ Country_code + facial_policy + vac_policy + stay_home + inter_travel, mergedata))
+```
+
+Before building an ANOVA model, we first make main effect plots for four policy variables (variable country is not our focus here). From the graph, it seems that in each policy variable, there are some groups having significant difference in `log(new_casesL20`. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+par(mfrow=c(2,2))
+# Main effect plot for facial_policy
+plotmeans(log(New_casesL20+1)~facial_policy,data=mergedata,xlab="facial_policy",ylab="log(New_casesL20)",
+          main="Main  effect, facial_policy",cex.lab=1.5) 
+# Main effect plot for stay_home
+plotmeans(log(New_casesL20+1)~stay_home,data=mergedata,xlab="stay_home",ylab="log(New_casesL20)", main="Main  effect, stay_home",cex.lab=1.5) 
+# Main effect plot for vac_policy
+plotmeans(log(New_casesL20+1)~vac_policy,data=mergedata,xlab="vac_policy",ylab="log(New_casesL20)", main="Main  effect, vac_policy",cex.lab=1.5) 
+# Main effect plot for inter_travel
+plotmeans(log(New_casesL20+1)~inter_travel,data=mergedata,xlab="inter_travel",ylab="log(New_casesL20)", main="Main  effect, inter_travel",cex.lab=1.5) 
+```
+
+ 
+
+## Factorial Fixed Effect ANOVA Model without Interaction Terms
+
+We first build a **Fixed Effect Factorial ANOVA** model, without considering possible interaction terms. For convenience, we let $Y$ representing our response variable `log(New_casesL20)`
+
+In accordance with our notation in Introduction part, we write out ANOVA model in the factor-effect form:
+
+$$
+Y_{ijklmn} = \mu + \alpha_i + \beta_j + \gamma_k + \delta_l + \zeta_m + \epsilon_{ijklmn}
+$$
+
+where $\epsilon_{ijklmn}$ are i.i.d $N(0,\sigma^2)$, and
+
+$$
+n = 1,\dots,19296,\, i = 1,\dots,53,\, j = 0,\dots,4,\, k = 0,\dots,5, \, l = 0, \dots, 3, m = 0,\dots,4 
+$$
+
+We fit the model with `aov` function, and obtain ANOVA table:
+
+```{r}
+anova.fit<-aov(log(New_casesL20+1) ~ Country_code + facial_policy + vac_policy + stay_home + inter_travel, data=mergedata)
+summary(anova.fit)
+```
+
+The ANOVA table displays the result of five hypothesis tests, one for each variable. As an example, for variable `inter_travel`, we have $H_0: \zeta_0 = \zeta_1 = \cdots = \zeta_4$ v.s.
+$H_1: {\rm not \ all\ } \zeta_m\ {\rm are\ the\ same}$. We construct F statistics and it follows F distribution under null hypothesis. From the table, we can see that p-value for `inter_travel` is very high, suggesting there is no significant difference between groups. One reason can be that for the observed data here, we only have level 3 and 4. However, the variable should contain 5 levels. Thus, we discard this variable and refit the model with four remaining variable.
+
+```{r}
+anova.fit<-aov(log(New_casesL20+1) ~ Country_code + facial_policy + vac_policy + stay_home, data=mergedata)
+summary(anova.fit)
+```
+
+Now all variables are significant (on level $\alpha=0.05$). This is good sign, indicating some policies do have effect on controlling pandemic spread. Yet, the residual sum of squares are large, suggesting there are still a large parts not being explained. Thus, next we try to add potential interaction terms to our model.
+
+## Factorial Fixed Effect ANOVA Model with Interaction Terms
+
+A Factorial Fixed Effect ANOVA Model with Interaction Terms in factor-effect form looks like:
+
+$$
+Y_{ijklmn} = \mu + \alpha_i + \beta_j + \gamma_k + \delta_l + (\alpha\beta)_{ij} + (\alpha\gamma)_{ik} + (\alpha\delta)_{il} + (\beta\gamma)_{jk} + (\beta\delta)_{jl} + \epsilon_{ijkln}
+$$
+
+where $\epsilon_{ijkln}$ are i.i.d $N(0,\sigma^2)$, and
+
+$$
+n = 1,\dots,19296,\, i = 1,\dots,53,\, j = 0,\dots,4,\, k = 0,\dots,5, \, l = 0, \dots, 3
+$$
+
+Here we do not consider the interaction term between `stay_home` and `vac_policy`, as this one has no useful meaning. The ANOVA table below shows the hypothesis test result for each interaction term. Take `facial_policy*stay_home` as an example, we have $(\beta\delta)_{jl}=0$ v.s.
+$H_1: {\rm not \ all\ } (\beta\delta)_{jl}\ {\rm are\ zero}$. Again, with full model and reduced model, we can construct F-statistics. Since $p=0.175$, we can not reject null hypothesis under significant level $\alpha=0.05$. For the rest interaction terms, we all reject the null hypothesis, and consider them significant.
+
+```{r}
+# interaction terms
+inter_anova <- aov(log(New_casesL20 + 1) ~ Country_code + facial_policy + vac_policy + stay_home + Country_code*facial_policy + Country_code*vac_policy + Country_code*stay_home + facial_policy*vac_policy + facial_policy*stay_home, mergedata)
+summary(inter_anova)
+```
+
+Thus, our final model is:
+$$
+Y_{ijklmn} = \mu + \alpha_i + \beta_j + \gamma_k + \delta_l + (\alpha\beta)_{ij} + (\alpha\gamma)_{ik} + (\alpha\delta)_{il} + (\beta\gamma)_{jk}+ \epsilon_{ijkln}
+$$
+
+With fitted results:
+
+```{r}
+inter_anova <- aov(log(New_casesL20 + 1) ~ Country_code + facial_policy + vac_policy + stay_home + Country_code*facial_policy + Country_code*vac_policy + Country_code*stay_home + facial_policy*vac_policy, mergedata)
+summary(inter_anova)
+```
+
+Now we already have temporary conclusions that some policies do have effect on controlling new cases. Besides, the effect of policies are different with regard to countries (`Country_code` has significant interaction effects with all the policy variables). This is a good sign for answering our questions. However, we are interested in the direction of the effects, as well as which policies are the more powerful. Thus, we apply Tukey-Kramer method to build 95% confidence interval.
+
+## Confidence Intervals
+
+We construct 95% confidence interval using Tukey-Kramer method. Here, we only display that for `facial_policy` and `stay_home`. As others have too many levels, making the plots meaningless. 
+
+We can see for `facial_policy`, 95% confidence interval of "4-3" is negative and does not contain 0. This means that compared to level 3 (masks required in public/shared spaces), level 4 (masks required everywhere outside home) is associated with significantly lower new cases. And for `stay_home`, with all negative confidence intervals, both the level 1 (recommended not leaving home) and 2 (not leaving home with exceptions of daily exercises) have effect of reducing new cases. Also, level 2 seems to be more powerful in controlling new cases.
+
+```{r}
+sig.level = 0.05
+T.ci=TukeyHSD(inter_anova, conf.level = 1-sig.level, which = c("facial_policy", "stay_home"))
+par(mfrow=c(1,2))
+plot(T.ci, las=1 , col="brown")
+par(mfrow=c(1,1))
+```
+
+# Sensitivity Analysis
+
+
+We also need to conduct model diagnostics to check model assumption. The major assumption we make is that $\epsilon_{ijklmn}$ are i.i.d $N(0,\sigma^2)$. This contains two sub assumptions: 1. error term has equal variance; 2. the error term follows normal distribution. 
+
+To check equal variance assumption, we inspect Residuals v.s. Fitted plot and Normal-QQ plot. From the first plot, we observe no obvious heteroskedasticity. Also, there is no obvious non-linear trend. 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+plot(anova.fit, which = 1)
+```
+
+To inspect normality assumption, we inspect out Normal Q-Q plot. We can see the standardized residuals fit with theoretical quantiles pretty well. There is no violation of normality assumption. This is mainly because we first conduct log transformation on response variable `New_cases`, which greatly improve the situation of right-skewed distribution. 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+plot(anova.fit, which = 2)
+```
+
+As the model assumptions are not violated, our procedures of conducting hypothesis tests and building confidence intervals seem to be valid here. We can come up with some helpful conclusions.
+
+# Conclusions and Further Discussions
+
+## Conclusions
+
+Based on our analysis, we first conclude that some policies do have effects on controlling pandemic. Detailed conclusions are listed below:
+
+* In particular, facial policy, vaccine policy, and stay-at-home policy all help reduce COVID new cases. However, the effects are different with regard to the countries.
+
+* For facial policy, the strictest level (masks required everywhere outside home) is significantly more powerful than other levels in reducing new cases.
+
+* For stay-at-home policy, even if just recommended not to leave home, it is associated with lower new cases. Without surprise, a stricter one of not leaving home with exceptions of daily exercises seems to be more powerful in controlling new cases.
+
+Back at our questions in the beginning, as people are getting tired, are these policies still necessary for controlling pandemic? Our answer is that, they do. And we encourage people to keep following the government's instructions until the pandemic truly ends.
+
+## Further Discussions
+
+There are still drawbacks in our analysis. First is that although by introducing interaction terms, we are able to explain more sample variances, there are still large parts that are not explained. As COVID new cases can actually be affected by many factors, like social economic factors, environmental factors, nature of virus. It is impossible for us to exhaust all of them in this analysis. Also, though we are able to draw solid conclusions based confidence intervals for facial policy and stay-at-home policy, we can not reach a similar one for vaccine policy. We only know that it does have effect on COVID new cases. Moreover, it is always debatable on how policies and new cases interact with each other. Is it because pandemic becomes severe that government publishes stricter policies, or stricter policies help control the pandemic? In our analysis, we tackle this problem by taking lag on response variable, but some counterintuitive facts still show up, and need further study.
+
+# Acknowledge
+
+We want to thank Dr. Chen for introducing ANOVA model to us, as well as providing the WHO data set. We also want to thank our project adviser Zitong for providing helpful advice. Besides, I want to thank my teammates Xiaoyi, Tianyi and Kay for discussing projects together.
+
+# Appendix: R Code
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+
+```
+
